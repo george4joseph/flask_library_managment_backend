@@ -25,7 +25,7 @@ def members():
             # creating cursor
             cur = con.cursor()
             # Executing SQL Query
-            cur.execute("INSERT INTO members (name, email) VALUES (?,?)", (name, email))
+            cur.execute("INSERT INTO members (name, email,books_issued,total_debt) VALUES (?,?,0,0)", (name, email))
             # commiting
             con.commit()
             # closing
@@ -228,7 +228,7 @@ def import_book():
 
 
 # Transactions
-@app.route('/transaction', methods=['GET'])
+@app.route('/transactions', methods=['GET'])
 def all_transactions():
     if request.method == 'GET':
         con = sqlite3.connect(dbfile)
@@ -247,23 +247,66 @@ def issue():
         member_id = json_['memberID']
         book_id = json_['bookID']
         rent = json_['rent_per_day']
+        # connecting db
+        con = sqlite3.connect(dbfile)
+        cur = con.cursor()
+
+        # check dept >500 and stock of book exist 
+        cur.execute("SELECT books_issued,total_debt from members where id=?",(member_id,))
+        issued_count_debt = cur.fetchall()
+        # only 3 books can be issued to a member
+        if issued_count_debt[0][0] == 3:
+            return("U have issued 3 books - return one and take book")
+        if issued_count_debt[0][1] >= 500:
+            return("Your debt is high- plz pay")
+
+        # get stocks of books
+        cur.execute("SELECT available_quantity from books where bookID=?",(book_id,))
+        avail_quantity = cur.fetchall()
+        if avail_quantity[0][0] == 0:
+            return("Book stock finished")
         # due date is 10 days from existing date
         today = date.today()
         due_date = today + timedelta(days=10)
         total_charge= 10 * rent
-        con = sqlite3.connect(dbfile)
-        cur = con.cursor()
-        
+        #  inserting into transactions
         result = cur.execute("INSERT INTO transactions (memberID, bookID, rent_per_day, issued_on, due_date, total_charge) VALUES (?,?,?,?,?,?)",(member_id,book_id,rent,today,due_date,total_charge))
 
         cur.execute("UPDATE books set available_quantity = available_quantity-1 where bookID=?",(book_id,))
+        # update in member table
+        cur.execute("UPDATE members set books_issued = books_issued + 1, total_debt = total_debt +?  where id=?",(total_charge,member_id))
         con.commit()
         cur.close()
-        return ("insetred")
+        return ("issued")
 
 
-# renew
-
+# renew for 5 days
+@app.route('/renew', methods=['POST'])
+def renew():
+    content_type = request.headers.get('Content-Type')
+    if (content_type == 'application/vnd.api+json' and request.method == 'POST'):
+        json_ = request.get_json()
+        member_id = json_['memberID']
+        book_id = json_['bookID']
+        # renew days are from date of due date
+        con = sqlite3.connect(dbfile)
+        cur = con.cursor()
+        # Getting existing due date
+        cur.execute("SELECT due_date,rent_per_day FROM transactions where bookID=? and memberID=?",(book_id,member_id))
+        cur_due_date_rent = cur.fetchall()
+        cur_due_date_obj = datetime.strptime(cur_due_date_rent[0][0],"%Y-%m-%d").date()
+        today = date.today()
+        if today > cur_due_date_obj:
+            return("Cannot renue- plz return")
+        # renewd date
+        new_due_date_obj = cur_due_date_obj + timedelta(days=5)
+        renewed_charge = 5 * cur_due_date_rent[0][1]
+        # update the transactions
+        cur.execute("UPDATE transactions SET due_date=?,total_charge=total_charge +? WHERE bookID=? and memberID=?",(new_due_date_obj,renewed_charge,book_id,member_id))
+        cur.execute("UPDATE members set total_debt = total_debt +?  where id=?",(renewed_charge,member_id))
+        con.commit()
+        cur.close()
+        return ("renewed")
 
 # return
 app.route('/return',methods=['POST'])
