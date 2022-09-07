@@ -292,7 +292,7 @@ def renew():
         con = sqlite3.connect(dbfile)
         cur = con.cursor()
         # Getting existing due date
-        cur.execute("SELECT due_date,rent_per_day FROM transactions where bookID=? and memberID=?",(book_id,member_id))
+        cur.execute("SELECT due_date,rent_per_day FROM transactions where bookID=? and memberID=? and returned IS NULL",(book_id,member_id))
         cur_due_date_rent = cur.fetchall()
         cur_due_date_obj = datetime.strptime(cur_due_date_rent[0][0],"%Y-%m-%d").date()
         today = date.today()
@@ -302,14 +302,14 @@ def renew():
         new_due_date_obj = cur_due_date_obj + timedelta(days=5)
         renewed_charge = 5 * cur_due_date_rent[0][1]
         # update the transactions
-        cur.execute("UPDATE transactions SET due_date=?,total_charge=total_charge +? WHERE bookID=? and memberID=?",(new_due_date_obj,renewed_charge,book_id,member_id))
+        cur.execute("UPDATE transactions SET due_date=?,total_charge=total_charge +? WHERE bookID=? and memberID=? and returned IS NULL",(new_due_date_obj,renewed_charge,book_id,member_id))
         cur.execute("UPDATE members set total_debt = total_debt +?  where id=?",(renewed_charge,member_id))
         con.commit()
         cur.close()
         return ("renewed")
 
 # return
-app.route('/return',methods=['POST'])
+@app.route('/return',methods=['POST'])
 def return_():
     content_type = request.headers.get('Content-Type')
     if (content_type == 'application/vnd.api+json' and request.method == 'POST'):
@@ -320,17 +320,29 @@ def return_():
         cur = con.cursor()
         # getting data from db
         today = date.today()
-        cur.execute("SELECT issued_on,rent_per_day FROM transactions where bookID=? and memberID=?",(book_id,member_id))
-        issue_date_rent = cur.fetchall()
-        date_time_obj = datetime.strptime(issue_date_rent[0])
-        rent_per_day = issue_date_rent[1]
-        book_in_hand_days = (today - date_time_obj).days
-        if book_in_hand_days > 10 :
+        cur.execute("SELECT due_date,rent_per_day FROM transactions where bookID=? and memberID=? and returned IS NULL",(book_id,member_id))
+        due_date_rent = cur.fetchall()
+        date_obj = datetime.strptime(due_date_rent[0][0],"%Y-%m-%d").date()
+        rent_per_day = due_date_rent[0][1]
+        extra_days = (today - date_obj).days
+        if extra_days > 0:
             # pay punishment charge
-            # charge is 1.5 times 
-            additional_charge = (book_in_hand_days - 10) * 2 * rent_per_day
+            additional_charge = extra_days * 2 * rent_per_day
+            cur.execute("UPDATE transactions SET returned =?,total_charge= total_charge + ? where bookID=? and memberID=?",(today,additional_charge,book_id,member_id))
+            cur.execute("UPDATE members set total_debt = total_debt +?  where id=?",(additional_charge,member_id))
 
-            cur.execute("UPDATE transactions SET returned =?,total_charge= total_charge + ? where bookID=? and memberID=?",(str(today),additional_charge,book_id,member_id))
+        else: 
+            cur.execute("UPDATE transactions SET returned =? where bookID=? and memberID=?",(today,book_id,member_id))
+
+        con.commit()
+        cur.close()
+        return("Returned")
+
+@app.route("/pay",methods=['POST'])
+def pay():
+    
+
+    
 
 
 
