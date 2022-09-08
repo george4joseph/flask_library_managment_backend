@@ -338,23 +338,20 @@ def return_():
         cur.close()
         return("Returned")
 
-@app.route("/pay",methods=['POST'])
-def pay():
-    
-
-    
 
 
-
-
-    
-
-
-
-
-
-
-
-
-
+# pay
+@app.route("/pay/member_id=<string:id>",methods=['POST'])
+def pay(id):
+    content_type = request.headers.get('Content-Type')
+    if (content_type == 'application/vnd.api+json' and request.method == 'POST'):
+        json_ = request.get_json()
+        amount = json_['amount']
+        con = sqlite3.connect(dbfile)
+        cur = con.cursor()
+        # update debt
+        cur.execute('UPDATE members SET total_debt=total_debt-? WHERE id=?',(amount,id))
+        con.commit()
+        cur.close()
+        return(f"Payed Rs {amount}")
 
