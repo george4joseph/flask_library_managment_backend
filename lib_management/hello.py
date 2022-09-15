@@ -355,3 +355,25 @@ def pay(id):
         cur.close()
         return(f"Payed Rs {amount}")
 
+
+# search
+@app.route('/search',methods=['GET'])
+def search():
+    args = request.args
+    author = args.get("author", type=str)
+    title = args.get("title", type=str)
+    con = sqlite3.connect(dbfile)
+    cur = con.cursor()
+    if None not in (author,title):
+        cur.execute("SELECT * FROM books WHERE authors=? and title=?",(author,title))
+    elif author is not None:
+        cur.execute("SELECT * FROM books WHERE authors=?",(author,))
+    elif title is not None:
+        cur.execute("SELECT * FROM books WHERE title=?",(title,))
+    
+    search_result = cur.fetchall()
+    return(search_result)
+    
+
+
+
